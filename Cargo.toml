@@ -6,3 +6,9 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+tokio = { version = "1.13.0", features = ["full"] }
+
+[dependencies.serenity]
+version = "0.10.9"
+default-features = false
+features = ["builder","cache", "client", "framework", "standard_framework", "gateway", "model", "http", "utils", "rustls_backend", "collector", "unstable_discord_api"]
