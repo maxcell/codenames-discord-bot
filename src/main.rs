@@ -2,7 +2,7 @@ use std::{env};
 
 mod dictionary;
 
-use dictionary::Word;
+use dictionary::{Board};
 
 use serenity::{
     async_trait,
@@ -49,7 +49,7 @@ impl EventHandler for Handler {
         // Test Guild ID - 741467935939231819
 
         // Slash Command for the guild
-        let guild_command = GuildId(741467935939231819)
+        GuildId(741467935939231819)
         .create_application_command(&ctx.http, |command| {
             command.name("codename").description("A way to show the board")
         })
@@ -94,78 +94,12 @@ async fn main() {
 
 #[command]
 async fn challenge(ctx: &Context, msg: &Message, _: Args) -> CommandResult {
-    let text_word = Word {
-        text: "word",
-        custom_id: "123123"
-    };
     let msg = msg
         .channel_id
         .send_message(&ctx.http, |m| {
             m.content( "Let's start a new game");
             m.components(|c| {
-                c.create_action_row(|r| {
-                    r.add_button(text_word.build_button());
-                    r.create_button(|b| {
-                        b.label("steak");
-                        b.style(interactions::message_component::ButtonStyle::Primary);
-                        b.custom_id("12123");
-                        b
-                    });
-                    r.create_button(|b| {
-                        b.label("ham");
-                        b.style(interactions::message_component::ButtonStyle::Primary);
-                        b.custom_id("123");
-                        b
-                    });
-                    r.create_button(|b| {
-                        b.label("chicken");
-                        b.style(interactions::message_component::ButtonStyle::Primary);
-                        b.custom_id("12");
-                        b
-                    });
-                    r.create_button(|b| {
-                        b.label("cow");
-                        b.style(interactions::message_component::ButtonStyle::Primary);
-                        b.custom_id("s2");
-                        b
-                    });
-                    r
-                });
-
-                // c.create_action_row(|r| {
-                //     r.create_button(|b| {
-                //         b.label("beef");
-                //         b.style(interactions::message_component::ButtonStyle::Primary);
-                //         b.custom_id("4");
-                //         b
-                //     });
-                //     r.create_button(|b| {
-                //         b.label("steak");
-                //         b.style(interactions::message_component::ButtonStyle::Primary);
-                //         b.custom_id("5");
-                //         b
-                //     });
-                //     r.create_button(|b| {
-                //         b.label("ham");
-                //         b.style(interactions::message_component::ButtonStyle::Primary);
-                //         b.custom_id("6");
-                //         b
-                //     });
-                //     r.create_button(|b| {
-                //         b.label("chicken");
-                //         b.style(interactions::message_component::ButtonStyle::Primary);
-                //         b.custom_id("7");
-                //         b
-                //     });
-                //     r.create_button(|b| {
-                //         b.label("cow");
-                //         b.style(interactions::message_component::ButtonStyle::Primary);
-                //         b.custom_id("8");
-                //         b
-                //     });
-                //     r
-                // });
-                c
+                c.set_action_rows(Board::create_list().build())
             });
             m
         })
