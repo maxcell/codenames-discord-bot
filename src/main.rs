@@ -25,8 +25,27 @@ impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::ApplicationCommand(command) = interaction {
             let content = match command.data.name.as_str() {
-                "codename" => "Hey, I'm alive!".to_string(),
-                _ => "Sorry not implemented".to_string()
+                "codename" => {
+                    let options = command
+                    .data
+                    .options
+                    .get(0)
+                    .expect("Expected user to provide option")
+                    .clone()
+                    .resolved
+                    .expect("Failed to properly consume the provided option");
+
+                    if let interactions::application_command::ApplicationCommandInteractionDataOptionValue::String(selection) = options {
+                    match selection.as_str() {
+                        "show" => "Show the board".to_string(),
+                        "create" => "New game".to_string(),
+                        _ => "Command not implemented".to_string()
+                    }
+                    } else {
+                        "Invalid Option sent to codenames".to_string()
+                    }
+                },
+                _ => "Sorry we don't have a command for that!".to_string()
             };
 
         if let Err(why) = command
@@ -51,9 +70,50 @@ impl EventHandler for Handler {
         // Slash Command for the guild
         GuildId(741467935939231819)
         .create_application_command(&ctx.http, |command| {
-            command.name("codename").description("A way to show the board")
-        })
-        .await;
+            command.name("codename").description("Commands for Codenames the game")
+            .create_option(|option| {
+                option.name("command")
+                .description("Select the commands you'd like to use")
+                .kind(interactions::application_command::ApplicationCommandOptionType::String)
+                .add_string_choice(
+                    "Start a new game",
+                    "create"
+                )
+                .add_string_choice(
+                    "Shows the board",
+                    "show"
+                )
+            
+            // .create_option(|option|{ option
+            //     .name("show")
+            //     .description("Show the board")
+                // .create_sub_option(|sub_command| {
+                //     sub_command
+                //     .name("show")
+                //     .kind(application_command::ApplicationCommandOptionType::SubCommand)
+                //     .description("show the board")
+                // })
+                // .create_sub_option(|sub_command| {
+                //     sub_command
+                //     .name("create")
+                //     .description("New board")
+                //     .kind(application_command::ApplicationCommandOptionType::SubCommand)
+                // })
+                .required(true)
+            })
+            // .create_option(|option|{ option
+            //     .name("create")
+            //     .description("The user to welcome")
+            //     .kind(interactions::application_command::ApplicationCommandOptionType::SubCommand)
+            //     .required(true)
+            // })
+
+        }).await;
+        // GuildId(741467935939231819)
+        // .create_application_command(&ctx.http, |command| {
+        //     command.name("codename show").description("A way to show the board")
+        // })
+        // .await;
     }
 }
 
