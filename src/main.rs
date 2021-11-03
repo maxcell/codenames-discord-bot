@@ -1,9 +1,9 @@
-use std::{env};
+use std::{borrow::{Borrow, BorrowMut}, collections::HashMap, env, sync::{Arc, atomic::{AtomicUsize, Ordering}}};
 
 mod dictionary;
 
 use dictionary::{Board};
-
+use tokio::sync::{RwLockReadGuard, RwLock};
 use serenity::{
     async_trait,
     framework::standard::{
@@ -17,6 +17,13 @@ use serenity::{
     model::prelude::*,
     prelude::*,
 };
+
+
+struct Game;
+
+impl TypeMapKey for Game {
+    type Value = Arc<RwLock<HashMap<u64, Board>>>;
+}
 
 struct Handler;
 
@@ -38,7 +45,20 @@ impl EventHandler for Handler {
                     if let interactions::application_command::ApplicationCommandInteractionDataOptionValue::String(selection) = options {
                     match selection.as_str() {
                         "show" => "Show the board".to_string(),
-                        "create" => "New game".to_string(),
+                        "create" => {
+                            let game_lock = {
+                                let data_read = ctx.data.read().await;
+                                data_read.get::<Game>().expect("Expected Game in TypeMap.").clone()
+                            };
+
+                            {
+                                let mut game_map = game_lock.write().await;
+                                game_map.entry(741467935939231822)
+                                .or_insert(Board::create_list());
+                            }
+
+                            "New game".to_string()
+                        },
                         _ => "Command not implemented".to_string()
                     }
                     } else {
@@ -65,8 +85,6 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
 
-        // Test Guild ID - 741467935939231819
-
         // Slash Command for the guild
         GuildId(741467935939231819)
         .create_application_command(&ctx.http, |command| {
@@ -83,37 +101,10 @@ impl EventHandler for Handler {
                     "Shows the board",
                     "show"
                 )
-            
-            // .create_option(|option|{ option
-            //     .name("show")
-            //     .description("Show the board")
-                // .create_sub_option(|sub_command| {
-                //     sub_command
-                //     .name("show")
-                //     .kind(application_command::ApplicationCommandOptionType::SubCommand)
-                //     .description("show the board")
-                // })
-                // .create_sub_option(|sub_command| {
-                //     sub_command
-                //     .name("create")
-                //     .description("New board")
-                //     .kind(application_command::ApplicationCommandOptionType::SubCommand)
-                // })
                 .required(true)
             })
-            // .create_option(|option|{ option
-            //     .name("create")
-            //     .description("The user to welcome")
-            //     .kind(interactions::application_command::ApplicationCommandOptionType::SubCommand)
-            //     .required(true)
-            // })
-
-        }).await;
-        // GuildId(741467935939231819)
-        // .create_application_command(&ctx.http, |command| {
-        //     command.name("codename show").description("A way to show the board")
-        // })
-        // .await;
+        }).await
+        .unwrap();
     }
 }
 
@@ -146,6 +137,10 @@ async fn main() {
         .framework(framework)
         .await
         .expect("Err creating client");
+    {
+        let mut data = client.data.write().await;
+        data.insert::<Game>(Arc::new(RwLock::new(HashMap::default())));
+    }
 
     if let Err(why) = client.start().await {
         println!("Client error: {:?}", why);
@@ -154,12 +149,29 @@ async fn main() {
 
 #[command]
 async fn challenge(ctx: &Context, msg: &Message, _: Args) -> CommandResult {
+    // Goal: To be able to build the game board
+    // In order to do that we need to do <Board Obj>.build()
+    // Problem: When trying to get the board state out of the global data (RwLock)
+    // it will not allow us to move the data.
+    let game_board = {
+        let data_read = ctx.data.read().await;
+        let game_lock = data_read.get::<Game>()
+        .expect("Expected to retrieve game data").clone();
+
+        let game_state = game_lock.read().await;
+        // Error here: cannot borrow data in a dereference of `tokio::sync::RwLockReadGuard<'_, HashMap<u64, Board>>` as mutable
+        // trait `DerefMut` is required to modify through a dereference, but it is not implemented for `tokio::sync::RwLockReadGuard<'_, HashMap<u64, Board>>`
+        game_state.remove(&741467935939231819)
+    };
+    
+
     let msg = msg
         .channel_id
         .send_message(&ctx.http, |m| {
             m.content( "Let's start a new game");
             m.components(|c| {
-                c.set_action_rows(Board::create_list().build())
+                // Ideally we'd want this to workTM
+                c.set_action_rows(game_board.unwrap().build())
             });
             m
         })
