@@ -1,10 +1,13 @@
 use itertools::Itertools;
-use serenity::{builder::{CreateActionRow, CreateButton}, model::prelude::*};
+use serenity::{
+    builder::{CreateActionRow, CreateButton},
+    model::prelude::*,
+};
 
 pub struct Word {
     pub text: String,
     pub is_touched: bool,
-    pub card_type: CardType
+    pub card_type: CardType,
 }
 
 impl Word {
@@ -33,7 +36,7 @@ impl Word {
             CardType::Red => String::from("🔴"),
             CardType::Blue => String::from("🔵"),
             CardType::Neutral => String::from("🟤"),
-            CardType::Assassin => String::from("☠️")
+            CardType::Assassin => String::from("☠️"),
         };
 
         my_button.emoji(serenity::model::channel::ReactionType::Unicode(emoji));
@@ -43,51 +46,50 @@ impl Word {
 }
 
 pub struct Board {
-    cards: Vec<Word>
+    cards: Vec<Word>,
 }
 
 pub enum CardType {
     Red,
     Blue,
     Neutral,
-    Assassin
+    Assassin,
 }
 
-
-impl Board { 
+impl Board {
     pub fn create_list() -> Board {
         let mut board = Board { cards: vec![] };
         let list: Vec<Word> = vec![
             Word {
                 text: String::from("streak"),
                 is_touched: false,
-                card_type: CardType::Neutral
+                card_type: CardType::Neutral,
             },
             Word {
                 text: String::from("word"),
                 is_touched: false,
-                card_type: CardType::Blue
+                card_type: CardType::Blue,
             },
             Word {
                 text: String::from("chicken"),
                 is_touched: false,
-                card_type: CardType::Red
+                card_type: CardType::Red,
             },
             Word {
                 text: String::from("nuggies"),
                 is_touched: false,
-                card_type: CardType::Blue
+                card_type: CardType::Blue,
             },
             Word {
                 text: String::from("beef"),
                 is_touched: false,
-                card_type: CardType::Red
+                card_type: CardType::Red,
             },
             Word {
                 text: String::from("cow"),
                 is_touched: false,
-                card_type: CardType::Assassin
-            }
+                card_type: CardType::Assassin,
+            },
         ];
 
         board.cards = list;
@@ -95,12 +97,28 @@ impl Board {
     }
 
     pub fn build(&self) -> Vec<CreateActionRow> {
-        let mut action_rows:  Vec<CreateActionRow>= vec![];
+        let mut action_rows: Vec<CreateActionRow> = vec![];
         for word_chunks in &self.cards.iter().chunks(5) {
             let mut new_action_row = CreateActionRow::default();
 
             word_chunks.for_each(|word| {
                 new_action_row.add_button(word.build_untouched_button());
+            });
+
+            action_rows.push(new_action_row);
+        }
+
+        action_rows
+    }
+
+    // todo!("make sure to not let this stay here");
+    pub fn build_seen(&self) -> Vec<CreateActionRow> {
+        let mut action_rows: Vec<CreateActionRow> = vec![];
+        for word_chunks in &self.cards.iter().chunks(5) {
+            let mut new_action_row = CreateActionRow::default();
+
+            word_chunks.for_each(|word| {
+                new_action_row.add_button(word.build_touched_button());
             });
 
             action_rows.push(new_action_row);
