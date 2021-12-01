@@ -5,15 +5,14 @@ use std::{collections::HashMap, convert::TryFrom, env, sync::{
 mod game;
 
 use game::{Board,create_game};
-use serenity::{async_trait, builder::{CreateActionRow, CreateInteractionResponse}, framework::standard::{
-        macros::{command, group, hook},
+use serenity::{async_trait, framework::standard::{
+        macros::{command, group},
         Args, CommandResult, StandardFramework,
     }, http::Http, model::prelude::*, prelude::*};
-use sqlx::{PgPool, database};
 use tokio::sync::{RwLock};
+use tokio::runtime::Runtime;
 
 mod word_bank;
-use word_bank::*;
 
 
 struct Game;
@@ -105,8 +104,6 @@ impl EventHandler for Handler {
             .clone()
         };
 
-        let test = create_game(&database_connection).await;
-
         if let Interaction::ApplicationCommand(command) = interaction {
             let codename_struct = CodenameCommand::try_from(command.clone()).unwrap();
             
@@ -118,12 +115,10 @@ impl EventHandler for Handler {
                     .kind(InteractionResponseType::ChannelMessageWithSource)
                     .interaction_response_data(|message| {
                         let message = message.content(codename_struct.content());
-
                         if let interactions::application_command::ApplicationCommandInteractionDataOptionValue::String(selection) = codename_struct.option {
                             match selection.as_str() {
                                 "show" => {
-                                    message.components(|c| {
-                                        // Ideally we'd want this to workTM
+                                    message.components(|c| {                                        
                                         c.set_action_rows(
                                             board.get(&741467935939231822).unwrap().build_seen()
                                         )
@@ -131,6 +126,9 @@ impl EventHandler for Handler {
                                     .flags(interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL)
                                 },
                                 "create" => {
+                                    tokio::spawn(async move {if selection.as_str() == "create" {
+                                        create_game(&database_connection).await;
+                                    }});
                                     message
                                 },
                                _ => {
