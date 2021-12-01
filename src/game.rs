@@ -3,14 +3,17 @@ use serenity::{
     builder::{CreateActionRow, CreateButton},
     model::prelude::*,
 };
+use sqlx::{Executor, PgPool};
 
-pub struct Word {
+use crate::word_bank::{sample_word_bank};
+
+pub struct Card {
     pub text: String,
     pub is_touched: bool,
     pub card_type: CardType,
 }
 
-impl Word {
+impl Card {
     pub fn build_button(&self) -> CreateButton {
         let mut button: CreateButton = CreateButton::default();
         button.label(self.text.clone());
@@ -45,8 +48,13 @@ impl Word {
     }
 }
 
+
+pub struct Game {
+    id: i32
+}
+
 pub struct Board {
-    cards: Vec<Word>,
+    cards: Vec<Card>,
 }
 
 pub enum CardType {
@@ -56,36 +64,54 @@ pub enum CardType {
     Assassin,
 }
 
+pub async fn create_game(db_connection: &PgPool) {
+    let new_game = sqlx::query!("INSERT INTO game default values RETURNING id")
+    .fetch_one(db_connection)
+    .await
+    .expect("Failed to invoke db query");
+
+    let select_words = sample_word_bank(10);
+
+    for word in select_words {
+        sqlx::query!("INSERT INTO game_words (word_id,game_id) VALUES ($1, $2)",
+            word,
+            new_game.id
+        ).execute(db_connection)
+        .await
+        .expect("Failed to invoke db query");
+    }
+}
+
 impl Board {
     pub fn create_list() -> Board {
         let mut board = Board { cards: vec![] };
-        let list: Vec<Word> = vec![
-            Word {
+        let list: Vec<Card> = vec![
+            Card {
                 text: String::from("streak"),
                 is_touched: false,
                 card_type: CardType::Neutral,
             },
-            Word {
+            Card {
                 text: String::from("word"),
                 is_touched: false,
                 card_type: CardType::Blue,
             },
-            Word {
+            Card {
                 text: String::from("chicken"),
                 is_touched: false,
                 card_type: CardType::Red,
             },
-            Word {
+            Card {
                 text: String::from("nuggies"),
                 is_touched: false,
                 card_type: CardType::Blue,
             },
-            Word {
+            Card {
                 text: String::from("beef"),
                 is_touched: false,
                 card_type: CardType::Red,
             },
-            Word {
+            Card {
                 text: String::from("cow"),
                 is_touched: false,
                 card_type: CardType::Assassin,

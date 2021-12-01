@@ -2,19 +2,29 @@ use std::{collections::HashMap, convert::TryFrom, env, sync::{
         Arc,
     }};
 
-mod dictionary;
+mod game;
 
-use dictionary::Board;
+use game::{Board,create_game};
 use serenity::{async_trait, builder::{CreateActionRow, CreateInteractionResponse}, framework::standard::{
         macros::{command, group, hook},
         Args, CommandResult, StandardFramework,
     }, http::Http, model::prelude::*, prelude::*};
+use sqlx::{PgPool, database};
 use tokio::sync::{RwLock};
+
+mod word_bank;
+use word_bank::*;
+
 
 struct Game;
 
 impl TypeMapKey for Game {
     type Value = Arc<RwLock<HashMap<u64, Board>>>;
+}
+
+struct Db;
+impl TypeMapKey for Db {
+    type Value = Arc<sqlx::PgPool>;
 }
 
 struct CodenameCommand { 
@@ -32,7 +42,7 @@ impl CodenameCommand {
             match selection.as_str() {
                 "show" => "Here's the secret board. Don't speak to anyone about it!".to_string(),
                 "create" => {
-                    "New game".to_string()
+                    "New Game Created!".to_string()
                 },
                 _ => "Command not implemented".to_string()
             }
@@ -84,6 +94,19 @@ impl EventHandler for Handler {
             game_arc_lock
         };
 
+        let database_connection = {
+            let arc = ctx
+            .data
+            .read()
+            .await;
+    
+            arc.get::<Db>()
+            .expect("Failed to get connection to database")
+            .clone()
+        };
+
+        let test = create_game(&database_connection).await;
+
         if let Interaction::ApplicationCommand(command) = interaction {
             let codename_struct = CodenameCommand::try_from(command.clone()).unwrap();
             
@@ -107,6 +130,9 @@ impl EventHandler for Handler {
                                     })
                                     .flags(interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL)
                                 },
+                                "create" => {
+                                    message
+                                },
                                _ => {
                                    message
                                }
@@ -116,10 +142,10 @@ impl EventHandler for Handler {
                         }
                         
             })
-            }).await
-            {
+        }).await
+        {
                 println!("Cannot respond to slash command: {}", why);
-            }
+        }
         }
     }
 
@@ -171,7 +197,7 @@ impl EventHandler for Handler {
 }
 
 #[group("collector")]
-#[commands(show)]
+#[commands(show, output)]
 struct Collector;
 
 #[tokio::main]
@@ -195,6 +221,16 @@ async fn main() {
                 .delimiters(vec![", ", ","])
         })
         .group(&COLLECTOR_GROUP);
+    
+    let database_url = std::env::var("DATABASE_URL").expect("Make sure to add the DATABASE_URL to the environment variables");
+
+    let database = sqlx::postgres::PgPoolOptions::new()
+    .max_connections(5)
+    .connect(&database_url)
+    .await.expect("Test if we made teh connection");
+
+    // ? Why did we need to use expect here as opposed to question mark?
+    // Is it due to the impl future
 
     let mut client = Client::builder(&token)
         .application_id(904223099552149514)
@@ -205,6 +241,11 @@ async fn main() {
     {
         let mut data = client.data.write().await;
         data.insert::<Game>(Arc::new(RwLock::new(HashMap::default())));
+    }
+
+    {
+        let mut data = client.data.write().await;
+        data.insert::<Db>(Arc::new(database));
     }
 
     if let Err(why) = client.start().await {
@@ -244,4 +285,24 @@ async fn show(ctx: &Context, msg: &Message, _: Args) -> CommandResult {
     }
 
     Ok(())
+}
+
+#[command]
+async fn output(ctx: &Context, msg: &Message, _: Args) -> CommandResult {
+    let database_connection = {
+        let arc = ctx
+        .data
+        .read()
+        .await;
+
+        arc.get::<Db>()
+        .expect("Failed to get connection to database")
+        .clone()
+    };
+
+    create_game(&database_connection).await;
+
+
+    msg.reply(&ctx, "Beef").await?;
+    return Ok(());
 }
