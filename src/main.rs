@@ -8,9 +8,10 @@ use game::{Board,create_game};
 use serenity::{async_trait, framework::standard::{
         macros::{command, group},
         Args, CommandResult, StandardFramework,
-    }, http::Http, model::prelude::*, prelude::*};
+    }, 
+    model::interactions::application_command::ApplicationCommandInteractionDataOptionValue,
+    http::Http, model::prelude::*, prelude::*};
 use tokio::sync::{RwLock};
-use tokio::runtime::Runtime;
 
 mod word_bank;
 
@@ -37,7 +38,7 @@ enum SubCommand {
 
 impl CodenameCommand {
     fn content(&self) -> String {
-        if let interactions::application_command::ApplicationCommandInteractionDataOptionValue::String(selection) = self.option.clone() {
+        if let ApplicationCommandInteractionDataOptionValue::String(selection) = self.option.clone() {
             match selection.as_str() {
                 "show" => "Here's the secret board. Don't speak to anyone about it!".to_string(),
                 "create" => {
@@ -109,13 +110,13 @@ impl EventHandler for Handler {
             
             let board = game_board.read().await;
 
-            if let Err(why) = command 
+            if let Err(why) = command.clone() 
             .create_interaction_response(&ctx.http, |response| {
                 response
                     .kind(InteractionResponseType::ChannelMessageWithSource)
                     .interaction_response_data(|message| {
                         let message = message.content(codename_struct.content());
-                        if let interactions::application_command::ApplicationCommandInteractionDataOptionValue::String(selection) = codename_struct.option {
+                        if let ApplicationCommandInteractionDataOptionValue::String(selection) = codename_struct.option {
                             match selection.as_str() {
                                 "show" => {
                                     message.components(|c| {                                        
@@ -126,9 +127,10 @@ impl EventHandler for Handler {
                                     .flags(interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL)
                                 },
                                 "create" => {
-                                    tokio::spawn(async move {if selection.as_str() == "create" {
-                                        create_game(&database_connection).await;
-                                    }});
+                                    tokio::spawn(async move {
+                                        let guild_id = command.guild_id.unwrap();
+                                        create_game(&database_connection, guild_id.as_u64().clone()).await;
+                                    });
                                     message
                                 },
                                _ => {
@@ -195,7 +197,7 @@ impl EventHandler for Handler {
 }
 
 #[group("collector")]
-#[commands(show, output)]
+#[commands(show)]
 struct Collector;
 
 #[tokio::main]
@@ -283,24 +285,4 @@ async fn show(ctx: &Context, msg: &Message, _: Args) -> CommandResult {
     }
 
     Ok(())
-}
-
-#[command]
-async fn output(ctx: &Context, msg: &Message, _: Args) -> CommandResult {
-    let database_connection = {
-        let arc = ctx
-        .data
-        .read()
-        .await;
-
-        arc.get::<Db>()
-        .expect("Failed to get connection to database")
-        .clone()
-    };
-
-    create_game(&database_connection).await;
-
-
-    msg.reply(&ctx, "Beef").await?;
-    return Ok(());
 }
