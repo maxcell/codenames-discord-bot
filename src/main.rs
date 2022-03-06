@@ -108,7 +108,9 @@ impl EventHandler for Handler {
         if let Interaction::ApplicationCommand(command) = interaction {
             let codename_struct = CodenameCommand::try_from(command.clone()).unwrap();
             
-            let board = game_board.read().await;
+            //let board = game_board.read().await;
+
+            let cloned = command.clone();
 
             if let Err(why) = command.clone() 
             .create_interaction_response(&ctx.http, |response| {
@@ -119,17 +121,38 @@ impl EventHandler for Handler {
                         if let ApplicationCommandInteractionDataOptionValue::String(selection) = codename_struct.option {
                             match selection.as_str() {
                                 "show" => {
-                                    message.components(|c| {                                        
-                                        c.set_action_rows(
-                                            board.get(&741467935939231822).unwrap().build_seen()
-                                        )
-                                    })
+                                    // Wanting to show the board: Failing here
+                                    // let board = tokio::spawn(async move {
+                                    //     let guild_id = cloned.guild_id.unwrap().as_u64().clone().to_string();
+                                    //     dbg!(&guild_id);
+                                    //     let game = sqlx::query!(
+                                    //         "SELECT id from new_game WHERE guild_id = $1 AND game_state = 'created' ORDER BY created_at DESC LIMIT 1", 
+                                    //         guild_id)
+                                    //     .fetch_one(&*database_connection)
+                                    //     .await
+                                    //     .expect("Failed to retrieve latest game");
+                                    //     }).await
+                                    //     .expect("Failed to retrieve the current board from the database");
+                        
+                                    //     let cards = sqlx::query_as!(game::Card, r#"SELECT word_id as text,is_touched,card_type as "card_type!: _" from game_words WHERE game_id = $1"#, game.id)
+                                    //     .fetch_all(&*database_connection)
+                                    //     .await
+                                    //     .expect("Failed to retrieve game board");
+                        
+                                    //     Board { cards }
+                                    // }).await.expect("Failed to request the board state");
+                                    // message.components(|c| {                                        
+                                    //     c.set_action_rows(
+                                    //         board.build_seen()
+                                    //     )
+                                    // })
+                                    message
                                     .flags(interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL)
                                 },
                                 "create" => {
                                     tokio::spawn(async move {
                                         let guild_id = command.guild_id.unwrap();
-                                        create_game(&database_connection, guild_id.as_u64().clone()).await;
+                                        create_game(&*database_connection, guild_id.as_u64().to_string().clone()).await;
                                     });
                                     message
                                 },

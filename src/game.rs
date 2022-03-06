@@ -3,10 +3,11 @@ use serenity::{
     builder::{CreateActionRow, CreateButton},
     model::prelude::*,
 };
-use sqlx::{Executor, PgPool, Row};
+use sqlx::{Executor, PgPool, Row, FromRow};
 
 use crate::word_bank::{sample_word_bank};
 
+#[derive(Debug, sqlx::FromRow)]
 pub struct Card {
     pub text: String,
     pub is_touched: bool,
@@ -54,9 +55,11 @@ pub struct Game {
 }
 
 pub struct Board {
-    cards: Vec<Card>,
+    pub cards: Vec<Card>,
 }
 
+#[derive(Debug, sqlx::Type)]
+#[sqlx(type_name = "card_type", rename_all = "lowercase")]
 pub enum CardType {
     Red,
     Blue,
@@ -64,26 +67,33 @@ pub enum CardType {
     Assassin,
 }
 
-pub async fn create_game(db_connection: &PgPool, guild_id: u64) {
-    sqlx::query!("INSERT INTO server (guild_id) values ($1) ON conflict (guild_id) DO nothing;",
-    guild_id as u32)
+pub async fn create_game(db_connection: &PgPool, guild_id: String) {
+    sqlx::query!("INSERT INTO new_server (guild_id) values ($1) ON conflict (guild_id) DO nothing;",
+    guild_id)
     .execute(db_connection)
     .await
     .expect("failed to invoke db query");
 
-    let new_game = sqlx::query!("INSERT INTO game (guild_id) values ($1) RETURNING id",
-        guild_id as u32
+    let new_game = sqlx::query!("INSERT INTO new_game (guild_id) values ($1) RETURNING id",
+        guild_id
     )
     .fetch_one(db_connection)
     .await
     .expect("Failed to invoke db query");
 
-    let select_words = sample_word_bank(10);
+    let select_words = sample_word_bank(25);
 
-    for word in select_words {
-        sqlx::query!("INSERT INTO game_words (word_id,game_id) VALUES ($1, $2)",
+    for (position, word) in select_words.iter().enumerate() {
+        sqlx::query!("INSERT INTO game_words (word_id,game_id,card_type) VALUES ($1, $2, $3)",
             word,
-            new_game.id
+            new_game.id,
+            match position as u32 {
+                0..=7 => CardType::Red,
+                8..=16 => CardType::Blue,
+                17..=23 => CardType::Neutral,
+                24 => CardType::Assassin,
+                _ => panic!("Position inserted was incorrect")
+            } as CardType
         ).execute(db_connection)
         .await
         .expect("Failed to invoke db query");
