@@ -180,24 +180,6 @@ impl EventHandler for Handler {
     }
 
     async fn ready(&self, ctx: Context, ready: Ready) {
-        let game_lock = {
-            let data_read = ctx.data.read().await;
-            data_read
-                .get::<Game>()
-                .expect("Expected Game in TypeMap.")
-                .clone()
-        };
-
-        // Initializing game board data
-        // We may want to replace this with a request on retrieving all
-        // games currently within the server
-        {
-            let mut game_map = game_lock.write().await;
-            game_map
-                .entry(741467935939231822)
-                .or_insert(Board::create_list());
-        }
-
         println!("{} is connected!", ready.user.name);
 
         // Slash Command for the guild
@@ -226,10 +208,6 @@ impl EventHandler for Handler {
     }
 }
 
-#[group("collector")]
-#[commands(show)]
-struct Collector;
-
 #[tokio::main]
 async fn main() {
     // Configure the client with your Discord bot token in the environment.
@@ -249,8 +227,7 @@ async fn main() {
                 .on_mention(Some(bot_id))
                 .prefix("~")
                 .delimiters(vec![", ", ","])
-        })
-        .group(&COLLECTOR_GROUP);
+        });
 
     let database_url = std::env::var("DATABASE_URL")
         .expect("Make sure to add the DATABASE_URL to the environment variables");
@@ -283,38 +260,4 @@ async fn main() {
     if let Err(why) = client.start().await {
         println!("Client error: {:?}", why);
     }
-}
-
-#[command]
-async fn show(ctx: &Context, msg: &Message, _: Args) -> CommandResult {
-    let game_board = {
-        let game_arc_lock = ctx
-            .data
-            .read()
-            .await
-            .get::<Game>()
-            .expect("Expected to retrieve game data")
-            .clone();
-
-        game_arc_lock
-    };
-
-    let board = game_board.read().await;
-    let msg = msg
-        .channel_id
-        .send_message(&ctx.http, |m| {
-            m.content("Let's start a new game");
-            m.components(|c| {
-                // Ideally we'd want this to workTM
-                c.set_action_rows(board.get(&741467935939231822).unwrap().build())
-            });
-            m
-        })
-        .await;
-
-    if let Err(why) = msg {
-        println!("Error sending message: {:?}", why);
-    }
-
-    Ok(())
 }
