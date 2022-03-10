@@ -1,20 +1,22 @@
-use std::{collections::HashMap, convert::TryFrom, env, sync::{
-        Arc,
-    }};
+use std::{collections::HashMap, convert::TryFrom, env, sync::Arc};
 
 mod game;
 
-use game::{Board,create_game};
-use serenity::{async_trait, framework::standard::{
+use game::{create_game, Board};
+use serenity::{
+    async_trait,
+    framework::standard::{
         macros::{command, group},
         Args, CommandResult, StandardFramework,
-    }, 
+    },
+    http::Http,
     model::interactions::application_command::ApplicationCommandInteractionDataOptionValue,
-    http::Http, model::prelude::*, prelude::*};
-use tokio::sync::{RwLock};
+    model::prelude::*,
+    prelude::*,
+};
+use tokio::sync::RwLock;
 
 mod word_bank;
-
 
 struct Game;
 
@@ -27,24 +29,23 @@ impl TypeMapKey for Db {
     type Value = Arc<sqlx::PgPool>;
 }
 
-struct CodenameCommand { 
+struct CodenameCommand {
     data: interactions::application_command::ApplicationCommandInteraction,
-    option: interactions::application_command::ApplicationCommandInteractionDataOptionValue
+    option: interactions::application_command::ApplicationCommandInteractionDataOptionValue,
 }
 
 enum SubCommand {
-    Show
+    Show,
 }
 
 impl CodenameCommand {
     fn content(&self) -> String {
-        if let ApplicationCommandInteractionDataOptionValue::String(selection) = self.option.clone() {
+        if let ApplicationCommandInteractionDataOptionValue::String(selection) = self.option.clone()
+        {
             match selection.as_str() {
                 "show" => "Here's the secret board. Don't speak to anyone about it!".to_string(),
-                "create" => {
-                    "New Game Created!".to_string()
-                },
-                _ => "Command not implemented".to_string()
+                "create" => "New Game Created!".to_string(),
+                _ => "Command not implemented".to_string(),
             }
         } else {
             "Invalid Option sent to the command".to_string()
@@ -55,120 +56,126 @@ impl CodenameCommand {
 impl TryFrom<interactions::application_command::ApplicationCommandInteraction> for CodenameCommand {
     type Error = ();
 
-    fn try_from(value: interactions::application_command::ApplicationCommandInteraction) -> Result<Self, Self::Error> {
-        if value.data.name.as_str() == "codename"  {
-            
+    fn try_from(
+        value: interactions::application_command::ApplicationCommandInteraction,
+    ) -> Result<Self, Self::Error> {
+        if value.data.name.as_str() == "codename" {
             let option = value
-            .data
-            .options
-            .get(0)
-            .expect("Expect receive option")
-            .clone()
-            .resolved
-            .expect("Failed to use provided option");
+                .data
+                .options
+                .get(0)
+                .expect("Expect receive option")
+                .clone()
+                .resolved
+                .expect("Failed to use provided option");
 
-           return Ok(CodenameCommand{ data: value, option });
-            
+            return Ok(CodenameCommand {
+                data: value,
+                option,
+            });
         }
-        
+
         return Err(());
     }
 }
-
-
 
 struct Handler;
 
 #[async_trait]
 impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        let game_board = {
-            let game_arc_lock = ctx
-                .data
-                .read()
-                .await
-                .get::<Game>()
-                .expect("Expected to retrieve game data")
-                .clone();
 
-            game_arc_lock
-        };
-
+        // Establish a DB connection with the interaction
         let database_connection = {
-            let arc = ctx
-            .data
-            .read()
-            .await;
-    
+            let arc = ctx.data.read().await;
+
             arc.get::<Db>()
-            .expect("Failed to get connection to database")
-            .clone()
+                .expect("Failed to get connection to database")
+                .clone()
         };
 
-        if let Interaction::ApplicationCommand(command) = interaction {
-            let codename_struct = CodenameCommand::try_from(command.clone()).unwrap();
-            
-            //let board = game_board.read().await;
+        if let Some(cmd) = interaction.application_command() {
+            let option = cmd.clone().data.options.get(0).expect("").clone().resolved.unwrap();
+            if let ApplicationCommandInteractionDataOptionValue::String(selection) = option {
+                match selection.as_str() {
+                    // Reveal the board to the users
+                    // TODO: Show the currently revealed board state vs. the secret board state
+                    "show" => {
+                        let guild_id = cmd.clone().guild_id.unwrap().as_u64().to_string().clone();
+                        let board =  tokio::spawn(async move {
+                            let game = sqlx::query!(
+                                "SELECT id from new_game WHERE guild_id = $1 AND game_state = 'created'
+                                ORDER BY created_at DESC LIMIT 1", guild_id)
+                            .fetch_one(&*database_connection)
+                            .await
+                            .unwrap();
 
-            let cloned = command.clone();
+                            let cards = sqlx::query_as!(game::Card, r#"SELECT word_id as text,is_touched,card_type 
+                                as "card_type!: _" from game_words WHERE game_id = $1"#, game.id)
+                            .fetch_all(&*database_connection)
+                            .await
+                            .unwrap();
 
-            if let Err(why) = command.clone() 
-            .create_interaction_response(&ctx.http, |response| {
-                response
-                    .kind(InteractionResponseType::ChannelMessageWithSource)
-                    .interaction_response_data(|message| {
-                        let message = message.content(codename_struct.content());
-                        if let ApplicationCommandInteractionDataOptionValue::String(selection) = codename_struct.option {
-                            match selection.as_str() {
-                                "show" => {
-                                    // Wanting to show the board: Failing here
-                                    // let board = tokio::spawn(async move {
-                                    //     let guild_id = cloned.guild_id.unwrap().as_u64().clone().to_string();
-                                    //     dbg!(&guild_id);
-                                    //     let game = sqlx::query!(
-                                    //         "SELECT id from new_game WHERE guild_id = $1 AND game_state = 'created' ORDER BY created_at DESC LIMIT 1", 
-                                    //         guild_id)
-                                    //     .fetch_one(&*database_connection)
-                                    //     .await
-                                    //     .expect("Failed to retrieve latest game");
-                                    //     }).await
-                                    //     .expect("Failed to retrieve the current board from the database");
-                        
-                                    //     let cards = sqlx::query_as!(game::Card, r#"SELECT word_id as text,is_touched,card_type as "card_type!: _" from game_words WHERE game_id = $1"#, game.id)
-                                    //     .fetch_all(&*database_connection)
-                                    //     .await
-                                    //     .expect("Failed to retrieve game board");
-                        
-                                    //     Board { cards }
-                                    // }).await.expect("Failed to request the board state");
-                                    // message.components(|c| {                                        
-                                    //     c.set_action_rows(
-                                    //         board.build_seen()
-                                    //     )
-                                    // })
-                                    message
-                                    .flags(interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL)
-                                },
-                                "create" => {
-                                    tokio::spawn(async move {
-                                        let guild_id = command.guild_id.unwrap();
-                                        create_game(&*database_connection, guild_id.as_u64().to_string().clone()).await;
-                                    });
-                                    message
-                                },
-                               _ => {
-                                   message
-                               }
-                            }
-                        } else {
-                            message.content("You fucked up".to_string())
+                            Board { cards }
+                        }).await
+                        .unwrap();
+
+                        if let Err(why) = cmd.clone()
+                            .create_interaction_response(&ctx.http, |response| {
+                                response
+                                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                                    .interaction_response_data(|message| {
+                                         message.components(|c| {
+                                                c.set_action_rows(
+                                                    board.build_seen()
+                                                )
+                                            })
+                                            .flags(interactions::InteractionApplicationCommandCallbackDataFlags::EPHEMERAL);
+                                            message
+                                    })}).await {
+                                        println!("Cannot respond to slash command: {}", why);
+                                    }
+                    }
+                    "create" => {
+                        if let Err(why) = cmd
+                            .clone()
+                            .create_interaction_response(&ctx.http, |response| {
+                                response
+                                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                                    .interaction_response_data(|message| {
+                                        tokio::spawn(async move {
+                                            let guild_id = cmd.guild_id.unwrap();
+                                            create_game(
+                                                &*database_connection,
+                                                guild_id.as_u64().to_string().clone(),
+                                            )
+                                            .await;
+                                        });
+                                        message.content("Game created")
+                                    })
+                            })
+                            .await
+                        {
+                            println!("Cannot respond to slash command: {}", why);
                         }
-                        
-            })
-        }).await
-        {
-                println!("Cannot respond to slash command: {}", why);
-        }
+                    }
+                    _ => {
+                        if let Err(why) = cmd
+                            .clone()
+                            .create_interaction_response(&ctx.http, |response| {
+                                response
+                                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                                    .interaction_response_data(|message| {
+                                        message.content("Failed to recognize command")
+                                    })
+                            })
+                            .await
+                        {
+                            println!("Cannot respond to slash command: {}", why);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -181,9 +188,9 @@ impl EventHandler for Handler {
                 .clone()
         };
 
-         // Initializing game board data
-         // We may want to replace this with a request on retrieving all
-         // games currently within the server
+        // Initializing game board data
+        // We may want to replace this with a request on retrieving all
+        // games currently within the server
         {
             let mut game_map = game_lock.write().await;
             game_map
@@ -244,13 +251,15 @@ async fn main() {
                 .delimiters(vec![", ", ","])
         })
         .group(&COLLECTOR_GROUP);
-    
-    let database_url = std::env::var("DATABASE_URL").expect("Make sure to add the DATABASE_URL to the environment variables");
+
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("Make sure to add the DATABASE_URL to the environment variables");
 
     let database = sqlx::postgres::PgPoolOptions::new()
-    .max_connections(5)
-    .connect(&database_url)
-    .await.expect("Test if we made teh connection");
+        .max_connections(5)
+        .connect(&database_url)
+        .await
+        .expect("Test if we made teh connection");
 
     // ? Why did we need to use expect here as opposed to question mark?
     // Is it due to the impl future

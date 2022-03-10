@@ -3,9 +3,9 @@ use serenity::{
     builder::{CreateActionRow, CreateButton},
     model::prelude::*,
 };
-use sqlx::{Executor, PgPool, Row, FromRow};
+use sqlx::{Executor, FromRow, PgPool, Row};
 
-use crate::word_bank::{sample_word_bank};
+use crate::word_bank::sample_word_bank;
 
 #[derive(Debug, sqlx::FromRow)]
 pub struct Card {
@@ -49,11 +49,11 @@ impl Card {
     }
 }
 
-
 pub struct Game {
-    id: i32
+    id: i32,
 }
 
+#[derive(Debug)]
 pub struct Board {
     pub cards: Vec<Card>,
 }
@@ -68,13 +68,16 @@ pub enum CardType {
 }
 
 pub async fn create_game(db_connection: &PgPool, guild_id: String) {
-    sqlx::query!("INSERT INTO new_server (guild_id) values ($1) ON conflict (guild_id) DO nothing;",
-    guild_id)
+    sqlx::query!(
+        "INSERT INTO new_server (guild_id) values ($1) ON conflict (guild_id) DO nothing;",
+        guild_id
+    )
     .execute(db_connection)
     .await
     .expect("failed to invoke db query");
 
-    let new_game = sqlx::query!("INSERT INTO new_game (guild_id) values ($1) RETURNING id",
+    let new_game = sqlx::query!(
+        "INSERT INTO new_game (guild_id) values ($1) RETURNING id",
         guild_id
     )
     .fetch_one(db_connection)
@@ -84,7 +87,8 @@ pub async fn create_game(db_connection: &PgPool, guild_id: String) {
     let select_words = sample_word_bank(25);
 
     for (position, word) in select_words.iter().enumerate() {
-        sqlx::query!("INSERT INTO game_words (word_id,game_id,card_type) VALUES ($1, $2, $3)",
+        sqlx::query!(
+            "INSERT INTO game_words (word_id,game_id,card_type) VALUES ($1, $2, $3)",
             word,
             new_game.id,
             match position as u32 {
@@ -92,9 +96,10 @@ pub async fn create_game(db_connection: &PgPool, guild_id: String) {
                 8..=16 => CardType::Blue,
                 17..=23 => CardType::Neutral,
                 24 => CardType::Assassin,
-                _ => panic!("Position inserted was incorrect")
+                _ => panic!("Position inserted was incorrect"),
             } as CardType
-        ).execute(db_connection)
+        )
+        .execute(db_connection)
         .await
         .expect("Failed to invoke db query");
     }
