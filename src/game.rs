@@ -68,6 +68,7 @@ pub enum CardType {
 }
 
 pub async fn create_game(db_connection: &PgPool, guild_id: String) {
+    // Add our server into the list of servers that have played codenames
     sqlx::query!(
         "INSERT INTO new_server (guild_id) values ($1) ON conflict (guild_id) DO nothing;",
         guild_id
@@ -76,6 +77,18 @@ pub async fn create_game(db_connection: &PgPool, guild_id: String) {
     .await
     .expect("failed to invoke db query");
 
+    // Find an active game for that server
+    let active_game = sqlx::query!("
+        SELECT id from new_game WHERE
+            (game_state = 'created' OR game_state = 'playing') AND guild_id = ($1)
+        ORDER BY created_at DESC LIMIT 1", guild_id)
+    .fetch_one(db_connection)
+    .await;
+
+    // If there is an active game, early return
+    if let Ok(_) = active_game { return (); }
+
+    // Otherwise, there is no active game and create a new one
     let new_game = sqlx::query!(
         "INSERT INTO new_game (guild_id) values ($1) RETURNING id",
         guild_id
@@ -106,43 +119,8 @@ pub async fn create_game(db_connection: &PgPool, guild_id: String) {
 }
 
 impl Board {
-    pub fn create_list() -> Board {
-        let mut board = Board { cards: vec![] };
-        let list: Vec<Card> = vec![
-            Card {
-                text: String::from("streak"),
-                is_touched: false,
-                card_type: CardType::Neutral,
-            },
-            Card {
-                text: String::from("word"),
-                is_touched: false,
-                card_type: CardType::Blue,
-            },
-            Card {
-                text: String::from("chicken"),
-                is_touched: false,
-                card_type: CardType::Red,
-            },
-            Card {
-                text: String::from("nuggies"),
-                is_touched: false,
-                card_type: CardType::Blue,
-            },
-            Card {
-                text: String::from("beef"),
-                is_touched: false,
-                card_type: CardType::Red,
-            },
-            Card {
-                text: String::from("cow"),
-                is_touched: false,
-                card_type: CardType::Assassin,
-            },
-        ];
-
-        board.cards = list;
-        board
+    pub fn create_list(cards: Vec<Card>) -> Board {
+        Board { cards }
     }
 
     pub fn build(&self) -> Vec<CreateActionRow> {
